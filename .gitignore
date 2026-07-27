@@ -1,0 +1,77 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual environments
+venv/
+env/
+.venv/
+.venv.bak/
+venv.bak/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+env.cfg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.sublime-workspace
+*.sublime-project
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Logs
+*.log
+logs/
+access.log
+error.log
+
+# OS
+.DS_Store
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.lnk
+
+# Build
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# pyenv
+.python-version
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+
