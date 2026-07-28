@@ -29,14 +29,13 @@ class PatientBaseState(BaseModel):
     behavioral_profile: Literal[
         "HIGHLY_COMPLIANT",
         "NEEDS_REMINDERS",
-        "CARE_AVOIDER",
-        "FINANCIALLY_CONSTRAINED"
+        "CARE_AVOIDER"
     ]
     family_history: FamilyHistoryProfile
     sdoh_profile: SDOHProfile
 
 class LatentSubclinicalProgress(BaseModel):
-    unobserved_years_passed: float = Field(..., description="Years passed before the next medical interaction", ge=1)
+    days_passed: int = Field(..., description="Days passed before the next medical interaction", ge=1)
     #patient_age_at_end_of_gap: float = Field(..., description="Patient's age at the end of this gap")
     silent_pathology_accumulated: List[str] = Field(
         ...,
@@ -47,12 +46,17 @@ class LatentSubclinicalProgress(BaseModel):
         description="What brings them to the doctor? e.g., 'Routine Checkup', 'Acute Myocardial Infarction', 'Job-required physical'"
     )
     survival_status: Literal["SURVIVED", "FATAL_EVENT"]
+    # The Event Router
+    event_type: Literal["FULFILLED_ORDER", "MISSED_ORDERS_AND_DELAYED_VISIT", "UNSCHEDULED_ACUTE_EVENT", "ROUTINE_GAP"]
+    fulfilled_order_id: Optional[str] = Field(None,
+                                              description="If FULFILLED_ORDER, provide the specific order_id they attended")
+    missed_order_ids: List[str] = Field(default_factory=list,
+                                        description="Any order_ids the patient skipped or no-showed")
 
 class GenericObservation(BaseModel):
-    name: str = Field(..., description="e.g., 'Systolic BP', 'HbA1c', 'Heart Rate', 'Chest X-Ray'")
-    value: Optional[float] = Field(None, description="Populate ONLY for observations associated with a numeric value e.g., '145' for Systolic BP, '8.2' for HbA1c'")
-    string_value: Optional[str] = Field(None, description="Populate ONLY for observations associated with free-form text e.g., 'Mild pulmonary edema' for Chest X-Ray")
-    unit: Optional[str] = Field(None, description="e.g., 'mmHg', '%', 'bpm' or leave empty for observations without a unit")
+    name: str = Field(..., description="Name of the test or vital sign (e.g., 'Systolic BP', 'HbA1c', 'Chest X-Ray')")
+    value: str = Field(..., description="The actual result. Can be a number ('145', '8.2'), a ratio ('120/80'), or text ('Mild cardiomegaly', 'Negative'). DO NOT put units here.")
+    unit: Optional[str] = Field(None, description="The unit of measurement (e.g., 'mmHg', '%', 'mg/dL'). Leave null for text/imaging results.")
     offset_minutes: int = Field(..., description="Minutes after encounter start when this was measured (e.g., triage for vitals is 5-15 mins, lab results might take 30-90 mins)")
 
 class GenericMedicationChange(BaseModel):
@@ -63,6 +67,7 @@ class GenericMedicationChange(BaseModel):
     unit: str = Field(..., description="The unit the active ingredient is measured in e.g., 'mg' for milligrams, 'g' for grams")
     reason: str
     offset_minutes: int = Field(..., description="Minutes after encounter start when drug was prescribed (e.g., 20-180 mins)")
+    duration_days: Optional[int] = Field(None, description="If this is a short-term acute drug (e.g., antibiotics for 7 days), put 7. If chronic, leave null.")
 
     @field_validator('rxcui')
     @classmethod
@@ -102,6 +107,24 @@ class ConditionChange(BaseModel):
             )
         return v
 
+class PendingOrder(BaseModel):
+    order_type: Literal["IMAGING", "LAB_DRAW", "SPECIALIST_REFERRAL", "PROCEDURE", "ROUTINE_FOLLOW_UP"]
+    description: str = Field(..., description="e.g., 'Echocardiogram', 'Cardiology Consult'")
+    target_days_from_now: int = Field(..., gt=1, description="MUST BE >= 1. Orders are for FUTURE days only. Same-day tests must go into observations.")
+    urgency: Literal["ROUTINE", "URGENT", "STAT"]
+
+    # 2. Add a validator to feed a specific correction back to the LLM if it fails
+    @field_validator('target_days_from_now')
+    @classmethod
+    def validate_future_days(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                f"Invalid target_days_from_now: {v}. "
+                "Orders CANNOT be for 0 days. If the lab or imaging was done today, "
+                "remove it from orders_placed and put the result in the 'observations' list instead."
+            )
+        return v
+
 class ClinicalEncounterResult(BaseModel):
     encounter_type: Literal["ROUTINE_OUTPATIENT", "URGENT_CARE", "ER_VISIT", "HOSPITAL_ADMISSION", "SURGERY"]
     reason_for_visit: str
@@ -110,7 +133,9 @@ class ClinicalEncounterResult(BaseModel):
     condition_changes: List[ConditionChange] = Field(default_factory=list, description="Diagnosis changes established during this visit")
     medication_changes: List[GenericMedicationChange] = Field(default_factory=list)
     observations: List[GenericObservation] = Field(default_factory=list)
+    orders_placed: List[PendingOrder] = Field(default_factory=list)
     primary_cause_of_death: Optional[str] = Field(
         None,
         description="Populate ONLY if the event was fatal (e.g., 'Acute Massive Myocardial Infarction')"
     )
+

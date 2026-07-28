@@ -44,7 +44,6 @@ def init_db(db_name="synthetic_ehr.db"):
             timestamp TEXT,               -- ISO-8601 Datetime
             name TEXT,
             value TEXT,
-            string_value TEXT,
             unit TEXT,
             FOREIGN KEY(encounter_id) REFERENCES encounters(encounter_id)
         )
@@ -78,6 +77,23 @@ def init_db(db_name="synthetic_ehr.db"):
             unit TEXT,
             reason TEXT,
             FOREIGN KEY(encounter_id) REFERENCES encounters(encounter_id)
+        )
+    ''')
+
+    # 6. PENDING ORDERS (The Care Pathway Queue)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pending_orders (
+            order_id TEXT PRIMARY KEY,
+            patient_id TEXT,
+            encounter_id TEXT,            -- The visit where this was ordered
+            date_ordered TEXT,            -- ISO-8601 Datetime
+            target_date TEXT,             -- ISO-8601 Datetime
+            order_type TEXT,              -- 'IMAGING', 'LAB_DRAW', 'REFERRAL', etc.
+            description TEXT,
+            urgency TEXT,                 -- 'ROUTINE', 'URGENT', 'STAT'
+            status TEXT,                  -- 'PENDING', 'FULFILLED', 'MISSED'
+            FOREIGN KEY(encounter_id) REFERENCES encounters(encounter_id),
+            FOREIGN KEY(patient_id) REFERENCES patients(patient_id)
         )
     ''')
 
