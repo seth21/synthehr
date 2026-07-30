@@ -85,12 +85,12 @@ def simulate_latent_gap(patient_data: dict, current_age: float,
     4. SURGICAL AWARENESS: Read the Past Medical & Surgical History carefully. DO NOT generate acute events for organs that have been surgically removed (e.g., no appendicitis if they had an appendectomy).
     5. SILENT PATHOLOGY: Generate a short list of underlying biological changes happening during this time gap (e.g., 'worsening arterial plaque', 'unchecked hyperglycemia'). Base this on their Active Conditions, History, and Genetics.
     6. TRIGGERING EVENT: Write a brief, specific string explaining exactly what brings them into the clinic today (e.g., "3 days of severe right lower quadrant pain", "Routine Annual Checkup").
-    
-    WILDCARD EVENTS: People get sick randomly sometimes, like 10% of the time. When simulating an 'UNSCHEDULED_ACUTE_EVENT' or forcing a visit due to missed orders, do NOT always use heart attacks or diabetes complications. Consider random acute events like:
-    - Orthopedic injuries (e.g. sprains, fractures, back pain)
-    - Infectious diseases (e.g. Pneumonia, UTI, severe Gastroenteritis, Cellulitis)
-    - Dermatological issues (e.g. Severe allergic reactions, unknown rashes)
-    - Gastrointestinal crises (e.g. Appendicitis, Gallstones)
+    7. DEATH: If the patient is in critical condition and especially if they are old with a lot of comorbidities they might die. If they die set survival_status to 'FATAL_EVENT', otherwise set to 'SURVIVED'.
+    8. WILDCARD EVENTS: People get sick randomly sometimes, like 10% of the time. When simulating an 'UNSCHEDULED_ACUTE_EVENT' or forcing a visit due to missed orders, do NOT always use heart attacks or diabetes complications. Consider random acute events like:
+       - Orthopedic injuries (e.g. sprains, fractures, back pain)
+       - Infectious diseases (e.g. Pneumonia, UTI, severe Gastroenteritis, Cellulitis)
+       - Dermatological issues (e.g. Severe allergic reactions, unknown rashes)
+       - Gastrointestinal crises (e.g. Appendicitis, Gallstones)
     """
 
     print(f"Simulating time drift for patient at age {current_age}...")
