@@ -17,7 +17,9 @@ def init_db(db_name="synthetic_ehr.db"):
             current_sdoh TEXT,            -- JSON string
             is_alive BOOLEAN,
             death_date TEXT,              -- ISO-8601 Datetime
-            cause_of_death TEXT
+            cause_of_death TEXT,
+            pmh_summary TEXT, -- The narrative history
+            significant_diagnostics TEXT -- JSON string of major baselines
         )
     ''')
 

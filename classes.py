@@ -139,3 +139,13 @@ class ClinicalEncounterResult(BaseModel):
         description="Populate ONLY if the event was fatal (e.g., 'Acute Massive Myocardial Infarction')"
     )
 
+class PatientMemory(BaseModel):
+    pmh_summary: str = Field(
+        ...,
+        description="A compressed narrative of the patient's Past Medical/Surgical History (max 150 words)."
+    )
+    significant_diagnostics: List[str] = Field(
+        default_factory=list,
+        description="A running list of major abnormal labs, imaging, or pathology with their dates with format 'YYYY-MM-DD Exam: Finding' e.g., '2021-04-23 ECG: Atrial Fibrillation', '2019-03-15 Colonoscopy: Benign polyps'"
+    )
+

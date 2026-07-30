@@ -4,6 +4,8 @@ from openai import OpenAI
 import instructor
 from classes import ClinicalEncounterResult
 from datetime import datetime, timedelta
+import json
+from database import db
 
 # Import Step 3 functions to pull the latent drift data
 from drift import fetch_patient_baseline, simulate_latent_gap, LatentSubclinicalProgress
@@ -16,17 +18,44 @@ client = instructor.from_openai(
 MODEL = "gemma4:e4b"
 
 
+def get_latest_observations(patient_id, num_observations):
+    recent_obs_data = db.fetch_all('''
+            SELECT name, value, unit, timestamp 
+            FROM observations 
+            WHERE patient_id = ? 
+            ORDER BY timestamp DESC LIMIT ?
+        ''', (patient_id, num_observations)
+    )
+
+    recent_obs_list = []
+    for obs in recent_obs_data:
+        obs_date = datetime.fromisoformat(obs[3]).strftime("%Y-%m-%d")
+        unit = obs[2] if obs[2] else ""
+        recent_obs_list.append(f"{obs[0]}: {obs[1]} {unit} ({obs_date})")
+
+    recent_obs_text = ", ".join(recent_obs_list) if recent_obs_list else "No prior observations."
+    return recent_obs_text
+
 # --- THE CLINICAL ENCOUNTER ENGINE ---
 def generate_clinical_encounter(
         patient_data: dict,
         latent_drift: LatentSubclinicalProgress,
         patient_age_at_end_of_gap: int,
         active_conditions: dict,
-        active_medications: dict
+        active_medications: dict,
+        patient_id: str,
+        still_pending_orders_txt: str
 ) -> ClinicalEncounterResult:
     """Generates the structured clinical visit output from the drift event."""
     active_meds_display = [data["display"] for data in active_medications.values()]
     active_conds_display = list(active_conditions.values())
+
+    # Safely parse the significant_diagnostics JSON
+    sig_diag = patient_data.get('significant_diagnostics')
+    sig_diag_list = json.loads(sig_diag) if sig_diag else []
+    # Get past medical history
+    recent_obs_text = get_latest_observations(patient_id, 5)
+
     prompt = f"""
     You are an attending physician documenting a clinical encounter.
 
@@ -37,7 +66,11 @@ def generate_clinical_encounter(
 
     ACTIVE CONDITIONS PRIOR TO VISIT: {active_conds_display}
     ACTIVE MEDICATIONS PRIOR TO VISIT: {active_meds_display}
-
+    
+    PAST MEDICAL & SURGICAL HISTORY: {patient_data.get('pmh_summary', 'No significant history.')}
+    MAJOR PAST DIAGNOSTIC BASELINES: {sig_diag_list if sig_diag_list else 'No significant baseline diagnostics on file.'}
+    RECENT FLOWSHEET (Last 5 Labs/Vitals): {recent_obs_text}
+    FUTURE SCHEDULED ORDERS (DO NOT DUPLICATE THESE): {still_pending_orders_txt}
     REASON FOR VISIT / TRIGGERING EVENT: {latent_drift.triggering_event}
     SILENT PATHOLOGY THAT ACCUMULATED PRIOR TO VISIT: {latent_drift.silent_pathology_accumulated}
 
@@ -62,7 +95,7 @@ def generate_clinical_encounter(
     THERAPEUTIC DUPLICATION: If you are switching a patient to a new medication within the same class (e.g., switching from Simvastatin to Atorvastatin), you MUST output a STOP action for the old medication.
     7. If SURVIVAL_STATUS is FATAL_EVENT, document the resuscitation/fatal outcome and populate 'primary_cause_of_death'.
     8. PLAN & NEXT STEPS: If the patient requires future follow-up, specialist evaluation, or imaging, generate orders_placed with realistic timelines (e.g. a 3-month routine follow-up).
-    - FUTURE ORDERS ONLY: Use `orders_placed` strictly for appointments or labs happening TOMORROW or later (target_days_from_now >= 1).
+    - FUTURE ORDERS ONLY: Use `orders_placed` strictly for appointments or labs happening TOMORROW or later (target_days_from_now >= 1). Do NOT re-order routine labs, consults, or follow-ups if they are already on the "Future Scheduled Orders" list
     - SAME-DAY DIAGNOSTICS: If you need a lab test or imaging study TODAY (e.g., STAT Troponin, CMP, Chest X-Ray), DO NOT put it in `orders_placed`. Instead, assume the test was already performed. Invent realistic results and place them directly into the `observations` array. Evaluate these results in your clinical note.
     - If the patient is young and healthy, the only order might be "Follow up in 1 year" (365 days) or NO orders at all.
     """

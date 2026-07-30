@@ -1,5 +1,8 @@
 from typing import List
 import uuid
+
+from database import db
+from memory import update_patient_memory
 from patient import generate_patient_base, save_patient_to_db
 from drift import simulate_latent_gap, fetch_patient_baseline
 from clinical_encounter import generate_clinical_encounter, save_encounter_to_db
@@ -7,6 +10,7 @@ from datetime import datetime, timedelta
 import random
 from dateutil.relativedelta import relativedelta
 import sqlite3
+import json
 
 def update_medication_list(active: dict, changes: list, current_time: datetime) -> dict:
     """Updates active medications and calculates expiration dates for acute drugs."""
@@ -169,8 +173,12 @@ def run_lifetime_simulation(
 
 
         # CLINICAL ENCOUNTER: Generate visit, diagnoses, and notes
+        # Also inject still pending orders by the time of new encounter
+        pending_orders_at_encounter = fetch_pending_orders(patient_id)
+        calendar_text = calc_days_left_for_pending_orders(pending_orders_at_encounter, current_time)
+        print(f"  └ Remaining pending orders at time of encounter: {calendar_text}")
         encounter = generate_clinical_encounter(
-            patient_data, drift, current_age, active_conditions, active_medications
+            patient_data, drift, current_age, active_conditions, active_medications, patient_id, calendar_text
         )
 
         # Normalize business hours for non-emergencies
@@ -187,6 +195,40 @@ def run_lifetime_simulation(
 
         # Save encounter to SQLite database
         save_encounter_to_db(patient_id, encounter_start, encounter)
+
+        # MEMORY UPDATE
+        print("  MEMORY: Updating longitudinal clinical memory...")
+
+        # Parse old memory safely
+        sig_diag_raw = patient_data.get('significant_diagnostics')
+        old_memory = {
+            'pmh_summary': patient_data.get('pmh_summary', ''),
+            'significant_diagnostics': json.loads(sig_diag_raw) if sig_diag_raw else []
+        }
+
+        # Call the Summarizer
+        new_memory = update_patient_memory(
+            old_memory,
+            encounter.clinical_note,
+            encounter.observations,
+            current_time.isoformat(),
+        )
+
+        # Update state dictionary
+        patient_data['pmh_summary'] = new_memory['pmh_summary']
+        patient_data['significant_diagnostics'] = json.dumps(new_memory['significant_diagnostics'])
+
+        # Print for the console test
+        print(f"    └ PMH: {patient_data['pmh_summary']}")
+        print(f"    └ Baselines: {patient_data['significant_diagnostics']}")
+
+        # Save to SQLite
+        db.execute('''
+                    UPDATE patients 
+                    SET pmh_summary = ?, significant_diagnostics = ? 
+                    WHERE patient_id = ?
+                ''', (patient_data['pmh_summary'], patient_data['significant_diagnostics'], patient_id))
+        db.commit()
 
         # UPDATE ACTIVE STATE
         # Add new diagnoses to ongoing problem list or remove resolved ones
@@ -240,6 +282,16 @@ def fetch_pending_orders(patient_id: str, db_name="synthetic_ehr.db") -> List[di
     conn.close()
     return orders
 
+def calc_days_left_for_pending_orders(pending_orders: List[dict], current_time) -> str:
+    calendar_list = []
+    for order in pending_orders:
+        target_date = datetime.fromisoformat(order["target_date"])
+        days_away = (target_date - current_time).days
+        if days_away >= 0:
+            calendar_list.append(f"- {order["description"]} (Scheduled in {days_away} days)")
+    calendar_text = "\n".join(calendar_list) if calendar_list else "None scheduled."
+    return calendar_text
+
 def update_order_statuses(order_ids: List[str], new_status: str, db_name="synthetic_ehr.db"):
     """Marks orders as 'FULFILLED' or 'MISSED' in the database."""
     if not order_ids:
@@ -252,11 +304,20 @@ def update_order_statuses(order_ids: List[str], new_status: str, db_name="synthe
     conn.commit()
     conn.close()
 
-if __name__ == "__main__":
+"""if __name__ == "__main__":
     # Run a full life simulation loop
     run_lifetime_simulation(
         birth_year=random.randint(1945, 2010),
         gender=random.choice(["Male", "Female"]),
         ethnicity=random.choice(["Caucasian", "Hispanic", "African", "Asian"]),
         start_age=random.randint(15, 85),
+    )"""
+
+if __name__ == "__main__":
+    # Run a full life simulation loop
+    run_lifetime_simulation(
+        birth_year=1945,
+        gender=random.choice(["Male", "Female"]),
+        ethnicity=random.choice(["Caucasian", "Hispanic", "African", "Asian"]),
+        start_age=75,
     )
