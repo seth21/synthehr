@@ -4,7 +4,7 @@ import instructor
 import sqlite3
 import random
 
-from classes import PatientBaseState
+from core.classes import PatientBaseState
 
 # Bind instructor to the local Ollama instance
 client = instructor.from_openai(

@@ -1,6 +1,6 @@
 import sqlite3
 import json
-from classes import LatentSubclinicalProgress
+from core.classes import LatentSubclinicalProgress
 from typing import List
 from openai import OpenAI
 import instructor

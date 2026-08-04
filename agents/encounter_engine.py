@@ -2,13 +2,13 @@ import sqlite3
 import uuid
 from openai import OpenAI
 import instructor
-from classes import ClinicalEncounterResult
+from core.classes import ClinicalEncounterResult
 from datetime import datetime, timedelta
 import json
-from database import db
+from db.database import db
 
 # Import Step 3 functions to pull the latent drift data
-from drift import fetch_patient_baseline, simulate_latent_gap, LatentSubclinicalProgress
+from agents.drift_engine import LatentSubclinicalProgress
 
 # --- OLLAMA CLIENT SETUP ---
 client = instructor.from_openai(
@@ -157,11 +157,80 @@ def save_encounter_to_db(
     # 4. Insert Medication Changes
     for med in encounter.medication_changes:
         med_time = encounter_start + timedelta(minutes=med.offset_minutes)
+        new_medication_id = str(uuid.uuid4())
+        #Create the new medication if it does NOT exist in the database
+        cursor.execute("""
+                INSERT OR IGNORE INTO medications (
+                    medication_id,
+                    rxcui,
+                    medication_name,
+                    dosage,
+                    unit,
+                    drug_class,
+                    therapeutical_class,
+                    form
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+            new_medication_id,
+            med.rxcui,
+            med.medication_name,
+            med.dosage,
+            med.unit,
+            'N/A',
+            'N/A',
+            'N/A',
+        ))
+        #Get the medication_id of the drug
+        row = cursor.execute("""
+                SELECT medication_id
+                FROM medications
+                WHERE rxcui = ?
+            """, (med.rxcui,)).fetchone()
+        actual_medication_id = row[0]
+
+        #Create the new medication change event
         cursor.execute('''
-                INSERT INTO medications (medication_id, encounter_id, patient_id, timestamp, action, rxcui, medication_name, dosage, unit, reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (str(uuid.uuid4()), encounter_id, patient_id, med_time.isoformat(), med.action, med.rxcui,
-                  med.medication_name, med.dosage, med.unit, med.reason))
+                INSERT INTO medication_events (medication_event_id, encounter_id, patient_id, medication_id, timestamp, action, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (str(uuid.uuid4()), encounter_id, patient_id, actual_medication_id, med_time.isoformat(), med.action,
+                  med.reason))
+
+        #Update the current patient medications
+        cursor.execute("""
+                INSERT INTO patient_medications (
+                    patient_medication_id,
+                    patient_id,
+                    medication_id,
+                    start_date,
+                    updated_at,
+                    status,
+                    route,
+                    frequency
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+
+                ON CONFLICT(patient_id, medication_id)
+                DO UPDATE SET
+                    updated_at = excluded.updated_at,
+                    status = excluded.status,
+                    route = excluded.route,
+                    frequency = excluded.frequency,
+                    end_date = CASE
+                        WHEN excluded.status = 'STOP'
+                        THEN excluded.updated_at
+                        ELSE NULL
+                    END
+            """, (
+            str(uuid.uuid4()),
+            patient_id,
+            actual_medication_id,
+            med_time.isoformat(),
+            med_time.isoformat(),
+            med.action,
+            'N/A',
+            'N/A'
+        ))
 
     # 5. Insert Pending Orders (The Care Pathway Queue)
     for order in encounter.orders_placed:

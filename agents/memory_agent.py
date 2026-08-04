@@ -1,5 +1,5 @@
 from LLM import llm_service
-from classes import PatientMemory
+from core.classes import PatientMemory
 
 def update_patient_memory(old_memory: dict, encounter_note: str, encounter_observations: list,
                           current_date: str) -> dict:

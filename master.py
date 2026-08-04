@@ -1,11 +1,11 @@
 from typing import List
 import uuid
 
-from database import db
-from memory import update_patient_memory
+from db.database import db
+from agents.memory_agent import update_patient_memory
 from patient import generate_patient_base, save_patient_to_db
-from drift import simulate_latent_gap, fetch_patient_baseline
-from clinical_encounter import generate_clinical_encounter, save_encounter_to_db
+from agents.drift_engine import simulate_latent_gap, fetch_patient_baseline
+from agents.encounter_engine import generate_clinical_encounter, save_encounter_to_db
 from datetime import datetime, timedelta
 import random
 from dateutil.relativedelta import relativedelta
@@ -57,6 +57,7 @@ def update_condition_list(active_conditions: dict, condition_changes: list) -> d
             if change.icd10_code in updated:
                 del updated[change.icd10_code]
     return updated
+
 
 
 def run_lifetime_simulation(

@@ -1,4 +1,8 @@
 import sqlite3
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DB_PATH = PROJECT_ROOT / "synthetic_ehr.db"
 
 def init_db(db_name="synthetic_ehr.db"):
     conn = sqlite3.connect(db_name)
@@ -65,24 +69,56 @@ def init_db(db_name="synthetic_ehr.db"):
         )
     ''')
 
-    # 5. MEDICATIONS (The Pharmacy Ledger)
+    # 5. MEDICATIONS
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS medications (
-            medication_id TEXT PRIMARY KEY,
-            encounter_id TEXT,
+            CREATE TABLE IF NOT EXISTS medications (
+                medication_id TEXT PRIMARY KEY,
+                rxcui TEXT UNIQUE,
+                medication_name TEXT,
+                dosage TEXT,
+                unit TEXT,
+                drug_class TEXT,
+                therapeutical_class TEXT,
+                form TEXT
+            )
+        ''')
+
+    # 6. MEDICATION EVENTS
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS medication_events (
+            medication_event_id TEXT PRIMARY KEY,
+            encounter_id,
             patient_id TEXT,
+            medication_id,
             timestamp TEXT,               -- ISO-8601 Datetime
             action TEXT,                  -- 'START', 'STOP', 'DOSE_CHANGE'
-            rxcui TEXT,
-            medication_name TEXT,
-            dosage TEXT,
-            unit TEXT,
             reason TEXT,
-            FOREIGN KEY(encounter_id) REFERENCES encounters(encounter_id)
+            route TEXT,
+            frequency TEXT,
+            FOREIGN KEY(encounter_id) REFERENCES encounters(encounter_id),
+            FOREIGN KEY(medication_id) REFERENCES medications(medication_id)
         )
     ''')
 
-    # 6. PENDING ORDERS (The Care Pathway Queue)
+    # 7. CURRENT MEDICATIONS
+    cursor.execute('''
+            CREATE TABLE IF NOT EXISTS patient_medications (
+                patient_medication_id TEXT PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                medication_id TEXT NOT NULL,
+                start_date TEXT,               -- ISO-8601 Datetime
+                end_date TEXT,               -- ISO-8601 Datetime
+                updated_at TEXT,               -- ISO-8601 Datetime
+                status TEXT,                 -- 'ACTIVE', 'STOPPED', 'ON_HOLD'
+                route TEXT,
+                frequency TEXT,
+                FOREIGN KEY(patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY(medication_id) REFERENCES medications(medication_id),
+                UNIQUE(patient_id, medication_id)
+            )
+        ''')
+
+    # 8. PENDING ORDERS (The Care Pathway Queue)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS pending_orders (
             order_id TEXT PRIMARY KEY,
@@ -104,4 +140,4 @@ def init_db(db_name="synthetic_ehr.db"):
     print(f"Time-series Database '{db_name}' initialized successfully.")
 
 if __name__ == "__main__":
-    init_db()
+    init_db(DB_PATH)
