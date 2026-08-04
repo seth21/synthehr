@@ -36,7 +36,7 @@ class Database:
     ) -> sqlite3.Cursor:
         return self.conn.executemany(sql, params)
 
-    def fetch_one(
+    def execute_fetch_one(
         self,
         sql: str,
         params: tuple[Any, ...] = (),
@@ -44,13 +44,29 @@ class Database:
         cursor = self.execute(sql, params)
         return cursor.fetchone()
 
-    def fetch_all(
+    def execute_fetch_all(
         self,
         sql: str,
         params: tuple[Any, ...] = (),
     ) -> list[sqlite3.Row]:
         cursor = self.execute(sql, params)
         return cursor.fetchall()
+
+    def execute_fetch_one_dict(
+            self,
+            sql: str,
+            params: tuple[Any, ...] = (),
+    ) -> sqlite3.Row | None:
+        row = self.execute(sql, params)
+        return dict(row) if row else None
+
+    def execute_fetch_all_dict(
+            self,
+            sql: str,
+            params: tuple[Any, ...] = (),
+    ) -> list[dict]:
+        rows = self.execute_fetch_all(sql, params)
+        return [dict(row) for row in rows]
 
     def insert(
         self,
@@ -104,6 +120,5 @@ class Database:
             self.conn.rollback()
             raise
 
-db = Database()
 
 

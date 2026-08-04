@@ -1,23 +1,14 @@
+import uuid
 from datetime import datetime
-from openai import OpenAI
-import instructor
-import sqlite3
 import random
 
+from LLM import LLMService
 from core.classes import PatientBaseState
+from db import queries
+from db.database import Database
 
-# Bind instructor to the local Ollama instance
-client = instructor.from_openai(
-    OpenAI(
-        base_url="http://localhost:11434/v1",
-        api_key="ollama",  # The API key is required by the SDK but ignored by Ollama
-    ),
-    mode=instructor.Mode.JSON, # Crucial for local models to force JSON output
-)
 
-MODEL = "gemma4:e4b"
-
-def generate_patient_base(birth_year: int, gender: str, ethnicity: str) -> PatientBaseState:
+def generate_patient_base(llm: LLMService, birth_year: int, gender: str, ethnicity: str) -> PatientBaseState:
     """Generates the starting genetic and social state of the patient."""
     # Force clinical diversity by injecting a random archetype
     archetypes = [
@@ -53,42 +44,30 @@ def generate_patient_base(birth_year: int, gender: str, ethnicity: str) -> Patie
 
     print(f"Generating base state for {gender} born in {birth_year}...")
 
-    patient_state = client.chat.completions.create(
-        model=MODEL,
-        response_model=PatientBaseState,
+    patient_state = llm.complete(response_model=PatientBaseState,
         messages=[
             {"role": "system", "content": "You output strict, valid JSON matching the schema."},
             {"role": "user", "content": prompt}
         ],
-        temperature = 0.7
-    )
+        temperature = 0.7)
+
     return patient_state
 
-
-def save_patient_to_db(patient_id: str, dob: datetime, state: PatientBaseState, db_name="synthetic_ehr.db"):
-    """Saves the generated patient baseline into SQLite."""
-    conn = sqlite3.connect(db_name)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        INSERT INTO patients (
-            patient_id, first_name, last_name, dob, demographics, behavioral_profile, 
-            genetic_risks, current_sdoh, is_alive, death_date, cause_of_death
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        patient_id,
-        state.first_name,
-        state.last_name,
-        dob,
-        state.demographics,
-        state.behavioral_profile,
-        state.family_history.model_dump_json(),
-        state.sdoh_profile.model_dump_json(),
-        True,  # is_alive
-        None,  # age_at_death
-        None  # cause_of_death
-    ))
-
-    conn.commit()
-    conn.close()
-    print(f"Patient {patient_id} successfully saved to database.")
+def initialize_patient(llm: LLMService, db: Database, birth_year: int = 1970,
+        gender: str = "Male",
+        ethnicity: str = "African American") -> str:
+    patient_id = str(uuid.uuid4())
+    # Generate seed, genetics, and SDOH baseline
+    # Initialize the Macro Clock (Random DOB in the given year)
+    dob = datetime(birth_year, random.randint(1, 12), random.randint(1, 28))
+    base_state = generate_patient_base(llm, birth_year, gender, ethnicity)
+    with db.transaction():
+        queries.save_patient_to_db(db, patient_id, dob, base_state)
+        patient = queries.get_patient_profile(db, patient_id)
+    print(f"Full Name: {patient['first_name']} {patient['last_name']}")
+    print(f"Demographics: {patient['demographics']}")
+    print(f"Behavior Persona: {patient['behavior']}")
+    print(f"Genetic Risks: {patient['genetics'].get('genetic_risk_factors')}")
+    print(f"Financial Strain: {patient['sdoh'].get('financial_strain')}")
+    print("--------------------------------------------------\n")
+    return patient_id

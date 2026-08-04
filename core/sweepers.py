@@ -1,8 +1,9 @@
 from datetime import datetime
 from core.classes import LatentSubclinicalProgress
+from db.database import Database
 from db.queries import update_order_statuses
 
-def expire_missed_orders(cursor, pending_orders: list[dict], drift: LatentSubclinicalProgress, current_time):
+def expire_missed_orders(db: Database, pending_orders: list[dict], drift: LatentSubclinicalProgress, current_time):
     """Marks orders as MISSED if their target date has passed."""
     auto_missed_orders_count = 0
     for order in pending_orders:
@@ -10,12 +11,12 @@ def expire_missed_orders(cursor, pending_orders: list[dict], drift: LatentSubcli
         if current_time > target_date:
             # If it wasn't explicitly handled by the LLM at that cycle, force it to MISSED
             if order['order_id'] not in drift.missed_order_ids and drift.fulfilled_order_id != order['order_id']:
-                update_order_statuses([order['order_id']], 'MISSED')
+                update_order_statuses(db, [order['order_id']], 'MISSED')
                 auto_missed_orders_count += 1
     if auto_missed_orders_count > 0:
         print(f"  SYSTEM SWEEP: Auto-expired {auto_missed_orders_count} past-due order(s) as MISSED.")
 
-def stop_expired_medications(cursor, active_medications, current_time):
+def stop_expired_medications(db: Database, active_medications, current_time):
     """Auto-stops acute medications (like antibiotics) once their duration passes."""
     expired_meds = []
     # Convert items to list so we can safely delete from the dictionary while iterating

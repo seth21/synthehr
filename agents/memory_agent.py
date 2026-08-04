@@ -1,7 +1,7 @@
-from LLM import llm_service
+from LLM import LLMService
 from core.classes import PatientMemory
 
-def update_patient_memory(old_memory: dict, encounter_note: str, encounter_observations: list,
+def update_patient_memory(llm: LLMService, old_memory: dict, encounter_note: str, encounter_observations: list,
                           current_date: str) -> dict:
     # Format today's observations for the LLM to review
     obs_strings = [f"{o.name}: {o.value} {o.unit or ''}" for o in encounter_observations]
@@ -33,8 +33,7 @@ def update_patient_memory(old_memory: dict, encounter_note: str, encounter_obser
        - DO NOT add routine/normal vitals or normal labs.
        - Format as: 'YYYY-MM-DD [Test Name]: [Finding]'
     """
-
-    result = llm_service.complete(response_model=PatientMemory,
+    result = llm.complete(response_model=PatientMemory,
         messages=[{"role": "user", "content": prompt}])
 
     return result.model_dump()

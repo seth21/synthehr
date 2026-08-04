@@ -57,7 +57,7 @@ SynthEHR operates on a continuous feedback loop between the LLM and Python:
 4. Run the Master Simulation Loop:
 
     ```Bash
-    python master.py
+    python main.py
     ```
 ---
 

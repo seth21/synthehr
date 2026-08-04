@@ -1,44 +1,10 @@
-import sqlite3
 import json
+from LLM import LLMService
 from core.classes import LatentSubclinicalProgress
 from typing import List
-from openai import OpenAI
-import instructor
-
-# --- OLLAMA CLIENT SETUP ---
-client = instructor.from_openai(
-    OpenAI(base_url="http://localhost:11434/v1", api_key="ollama"),
-    mode=instructor.Mode.JSON,
-)
-MODEL = "gemma4:e4b"
-
-# --- DATABASE FETCH LOGIC ---
-def fetch_patient_baseline(patient_id: str, db_name="synthetic_ehr.db"):
-    """Pulls the patient's seed data from SQLite and parses the JSON strings."""
-    conn = sqlite3.connect(db_name)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT first_name, last_name, demographics, behavioral_profile, genetic_risks, current_sdoh 
-        FROM patients WHERE patient_id = ?
-    """, (patient_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        raise ValueError(f"Patient {patient_id} not found.")
-
-    return {
-        "first_name": row[0],
-        "last_name": row[1],
-        "demographics": row[2],
-        "behavior": row[3],
-        "genetics": json.loads(row[4]),
-        "sdoh": json.loads(row[5])
-    }
-
 
 # --- THE DRIFT ENGINE ---
-def simulate_latent_gap(patient_data: dict, current_age: float,
+def simulate_latent_gap(llm: LLMService, patient_data: dict, current_age: float,
                         active_conditions: dict, pending_orders: List[dict]) -> LatentSubclinicalProgress:
     """Calculates biological and social drift over unobserved time."""
     # Safely parse the PMH and Diagnostics
@@ -95,14 +61,11 @@ def simulate_latent_gap(patient_data: dict, current_age: float,
 
     print(f"Simulating time drift for patient at age {current_age}...")
 
-    drift_state = client.chat.completions.create(
-        model=MODEL,
-        response_model=LatentSubclinicalProgress,
+    drift_state = llm.complete(response_model=LatentSubclinicalProgress,
         messages=[
             {"role": "system", "content": "You are a deterministically grounded medical AI. Output valid JSON."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.5
+        temperature=0.5)
 
-    )
     return drift_state

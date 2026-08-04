@@ -23,5 +23,3 @@ class LLMService:
             response_model=response_model,
             temperature=temperature
         )
-
-llm_service = LLMService()
